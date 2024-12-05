@@ -1,0 +1,2 @@
+# Zcash Succint Protocol
+
