@@ -96,7 +96,7 @@ begin
 end process;
 
 end algorithm; *)
-\* BEGIN TRANSLATION (chksum(pcal) = "46ac69d3" /\ chksum(tla) = "91c303c2")
+\* BEGIN TRANSLATION (chksum(pcal) = "46ac69d3" /\ chksum(tla) = "ea6b05bf")
 CONSTANT defaultInitValue
 VARIABLES noteCommitmentTreeRoot, nullifierSet, blocks, userKeys, userNotes, 
           txPool, pc
@@ -182,7 +182,7 @@ Scan(self) == /\ pc[self] = "Scan"
               /\ userBalance' = [userBalance EXCEPT ![self] = Def!SumValidValues(userNotes[userName[self]], nullifierSet)]
               /\ IF Len(userNotes[userName[self]]) > 1
                     THEN /\ Assert(userBalance'[self] > 1, 
-                                   "Failure of assertion at line 91, column 13.")
+                                   "Failure of assertion at line 94, column 13.")
                     ELSE /\ TRUE
               /\ pc' = [pc EXCEPT ![self] = "Done"]
               /\ UNCHANGED << noteCommitmentTreeRoot, nullifierSet, blocks, 
