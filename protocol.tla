@@ -44,12 +44,23 @@ end process;
 
 \* For each user, create unspent transactions and add them to the transaction pool.
 process User \in UserProccessId .. Len(SetToSeq(Users))
-variables tx, username;
+variables tx, username, notesToSpend;
 begin
     CreateTransactions:
-        username := SetToSeq(Users)[self];
-        tx := Def!CreateTransaction(username, Def!GenerateNewNotes(username, 1, "null" \o ToString(self)), {});
-        txPool := Append(txPool, tx);
+        username := SetToSeq(Users)[self - UserProccessId + 1];
+
+        \* Select notes to spend
+        notesToSpend := SetToSeq({note \in ToSet(userNotes[username]) : note.nullifier \notin nullifierSet});
+
+        \* Create transaction if there are notes to spend
+        if Len(notesToSpend) > 0 then
+            tx := Def!CreateTransaction(
+                username,
+                Def!GenerateNewNotes(username, 1, "null" \o username),
+                {note.nullifier : note \in ToSet(notesToSpend)}
+            );
+            txPool := Append(txPool, tx);
+        end if;
 end process;
 
 \* Verify transactions and update the note commitment tree.
@@ -68,8 +79,7 @@ begin
         with block_tx \in ToSet(block.transactions) do
             if Def!VerifyTransaction(block_tx, nullifierSet) then
                 noteCommitmentTreeRoot := Def!UpdateTree(noteCommitmentTreeRoot, block_tx.newNotes);
-                nullifierSet := nullifierSet \cup block_tx.nullifiers;
-
+                nullifierSet := nullifierSet \union block_tx.nullifiers;
                 \* Decrypt notes and add them to the user's notes                
                 with note \in ToSet(block_tx.newNotes) do
                     with user \in DOMAIN userKeys do
@@ -96,7 +106,7 @@ begin
 end process;
 
 end algorithm; *)
-\* BEGIN TRANSLATION (chksum(pcal) = "46ac69d3" /\ chksum(tla) = "ea6b05bf")
+\* BEGIN TRANSLATION (chksum(pcal) = "f4b0b4c9" /\ chksum(tla) = "1c80cf97")
 CONSTANT defaultInitValue
 VARIABLES noteCommitmentTreeRoot, nullifierSet, blocks, userKeys, userNotes, 
           txPool, pc
@@ -104,10 +114,11 @@ VARIABLES noteCommitmentTreeRoot, nullifierSet, blocks, userKeys, userNotes,
 (* define statement *)
 LOCAL Def == INSTANCE Definitions
 
-VARIABLES tx, username, block, userBalance, userName, c
+VARIABLES tx, username, notesToSpend, block, userBalance, userName, c
 
 vars == << noteCommitmentTreeRoot, nullifierSet, blocks, userKeys, userNotes, 
-           txPool, pc, tx, username, block, userBalance, userName, c >>
+           txPool, pc, tx, username, notesToSpend, block, userBalance, 
+           userName, c >>
 
 ProcSet == {MinerProccessId} \cup (UserProccessId .. Len(SetToSeq(Users))) \cup {NodeProccessId} \cup (ScannerProccessId + 1 .. ScannerProccessId + Len(SetToSeq(Users)))
 
@@ -121,6 +132,7 @@ Init == (* Global variables *)
         (* Process User *)
         /\ tx = [self \in UserProccessId .. Len(SetToSeq(Users)) |-> defaultInitValue]
         /\ username = [self \in UserProccessId .. Len(SetToSeq(Users)) |-> defaultInitValue]
+        /\ notesToSpend = [self \in UserProccessId .. Len(SetToSeq(Users)) |-> defaultInitValue]
         (* Process Node *)
         /\ block = defaultInitValue
         (* Process Scanner *)
@@ -138,15 +150,23 @@ Mine == /\ pc[MinerProccessId] = "Mine"
         /\ txPool' = <<>>
         /\ pc' = [pc EXCEPT ![MinerProccessId] = "Done"]
         /\ UNCHANGED << noteCommitmentTreeRoot, nullifierSet, userKeys, 
-                        userNotes, tx, username, block, userBalance, userName, 
-                        c >>
+                        userNotes, tx, username, notesToSpend, block, 
+                        userBalance, userName, c >>
 
 Miner == Mine
 
 CreateTransactions(self) == /\ pc[self] = "CreateTransactions"
-                            /\ username' = [username EXCEPT ![self] = SetToSeq(Users)[self]]
-                            /\ tx' = [tx EXCEPT ![self] = Def!CreateTransaction(username'[self], Def!GenerateNewNotes(username'[self], 1, "null" \o ToString(self)), {})]
-                            /\ txPool' = Append(txPool, tx'[self])
+                            /\ username' = [username EXCEPT ![self] = SetToSeq(Users)[self - UserProccessId + 1]]
+                            /\ notesToSpend' = [notesToSpend EXCEPT ![self] = SetToSeq({note \in ToSet(userNotes[username'[self]]) : note.nullifier \notin nullifierSet})]
+                            /\ IF Len(notesToSpend'[self]) > 0
+                                  THEN /\ tx' = [tx EXCEPT ![self] =       Def!CreateTransaction(
+                                                                         username'[self],
+                                                                         Def!GenerateNewNotes(username'[self], 2, "null" \o username'[self]),
+                                                                         {note.nullifier : note \in ToSet(notesToSpend'[self])}
+                                                                     )]
+                                       /\ txPool' = Append(txPool, tx'[self])
+                                  ELSE /\ TRUE
+                                       /\ UNCHANGED << txPool, tx >>
                             /\ pc' = [pc EXCEPT ![self] = "Done"]
                             /\ UNCHANGED << noteCommitmentTreeRoot, 
                                             nullifierSet, blocks, userKeys, 
@@ -162,7 +182,7 @@ Verifier == /\ pc[NodeProccessId] = "Verifier"
             /\ \E block_tx \in ToSet(block'.transactions):
                  IF Def!VerifyTransaction(block_tx, nullifierSet)
                     THEN /\ noteCommitmentTreeRoot' = Def!UpdateTree(noteCommitmentTreeRoot, block_tx.newNotes)
-                         /\ nullifierSet' = (nullifierSet \cup block_tx.nullifiers)
+                         /\ nullifierSet' = (nullifierSet \union block_tx.nullifiers)
                          /\ \E note \in ToSet(block_tx.newNotes):
                               \E user \in DOMAIN userKeys:
                                 IF Def!CanDecrypt(note, userKeys[user])
@@ -173,8 +193,8 @@ Verifier == /\ pc[NodeProccessId] = "Verifier"
                          /\ UNCHANGED << noteCommitmentTreeRoot, nullifierSet, 
                                          userNotes >>
             /\ pc' = [pc EXCEPT ![NodeProccessId] = "Done"]
-            /\ UNCHANGED << userKeys, txPool, tx, username, userBalance, 
-                            userName, c >>
+            /\ UNCHANGED << userKeys, txPool, tx, username, notesToSpend, 
+                            userBalance, userName, c >>
 
 Node == Verifier
 
@@ -182,12 +202,12 @@ Scan(self) == /\ pc[self] = "Scan"
               /\ userBalance' = [userBalance EXCEPT ![self] = Def!SumValidValues(userNotes[userName[self]], nullifierSet)]
               /\ IF Len(userNotes[userName[self]]) > 1
                     THEN /\ Assert(userBalance'[self] > 1, 
-                                   "Failure of assertion at line 94, column 13.")
+                                   "Failure of assertion at line 104, column 13.")
                     ELSE /\ TRUE
               /\ pc' = [pc EXCEPT ![self] = "Done"]
               /\ UNCHANGED << noteCommitmentTreeRoot, nullifierSet, blocks, 
-                              userKeys, userNotes, txPool, tx, username, block, 
-                              userName, c >>
+                              userKeys, userNotes, txPool, tx, username, 
+                              notesToSpend, block, userName, c >>
 
 Scanner(self) == Scan(self)
 

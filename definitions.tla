@@ -11,7 +11,7 @@ CHARACTERS == {
     "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v",
     "w", "x", "y", "z", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "A", "B", "C", "D", "E", "F", "G", "H", "I",
     "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "!", "@", "#", "$", "%", "^",
-    "&", "*", "(", ")", "-", "_", "+", "=", "{", "}", "[", "]", "|", "\\", ":", ";", "'", "\"", "<", ">", ",", ".", "?"
+    "&", "*", "(", ")", "-", "_", "+", "=", "{", "}", "[", "]", "|", ":", ";", "<", ">", ",", ".", "?"
 }
 
 \* Generate a key pair for a given user.
@@ -70,14 +70,11 @@ CreateTransaction(user, newNotes, nullifiers) ==
 
 \* Generate new notes for a given user.
 GenerateNewNotes(user, value, nullifier) ==
-    IF value > 0 THEN
-        <<
-            [receiver |-> "pk_" \o user,
-            value |-> value,
-            nullifier |-> RandomHash(6)]
-        >>
-    ELSE
-        <<>>
+    <<
+        [receiver |-> "pk_" \o user,
+        value |-> value,
+        nullifier |-> RandomHash(6)]
+    >>
 
 \* Sum the values of a sequence of transactions.
 RECURSIVE SumValues(_)
@@ -86,7 +83,13 @@ SumValues(seq) ==
     ELSE Head(seq).value + SumValues(Tail(seq))
 
 \* Sum the values of a sequence of transactions, excluding those with nullifiers in the given set.
+RECURSIVE SumValidValues(_, _)
 SumValidValues(seq, nullifierSet) ==
-    SumValues([i \in 1..Len(seq) |-> IF seq[i].nullifier \notin nullifierSet THEN seq[i] ELSE <<>>])
+    SumValues(
+        Remove(
+            [i \in 1..Len(seq) |-> IF seq[i].nullifier \notin nullifierSet THEN seq[i] ELSE <<>>],
+            <<>>
+        )
+    )
 
 ====
