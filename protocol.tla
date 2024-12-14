@@ -7,27 +7,27 @@ CONSTANT Users
 \* Define the process ids
 MinerProccessId == 10000
 NodeProccessId == 20000
-ScannerProccessId == 1000
 UserProccessId == 1
 
 (*--algorithm protocol
 
 variables
     \* Initial root of an empty tree
-    noteCommitmentTreeRoot = <<>>;
+    noteCommitmentTreeRoot = "init";
     \* Set of spent note nullifiers
     nullifierSet = {};
     \* Sequence of incoming blocks
     blocks = <<>>;
-    \* User public/private keys
-    userKeys = [u \in Users |-> Def!GenerateKeyPair(u)];
-    \* Each user's locally tracked notes, initial balance for each user is 10.
-    userNotes = [u \in Users |-> <<[receiver |-> "pk" \o u, value |-> 1, nullifier |-> "init" \o u]>>];
     \* Transaction pool for miners
     txPool = <<>>;
 
 define
     LOCAL Def == INSTANCE Definitions
+
+    NoDoubleSpending ==
+        \A block \in ToSet(blocks) :
+            \A tx1, tx2 \in block.transactions :
+                tx1 /= tx2 => tx1.nullifiers \cap tx2.nullifiers = {}
 end define;
 
 \* Mine transactions and add them to the blockchain.
@@ -42,25 +42,17 @@ begin
         txPool := <<>>;    
 end process;
 
-\* For each user, create unspent transactions and add them to the transaction pool.
+\* For each user, create transactions that spend notes and add them to the transaction pool.
 process User \in UserProccessId .. Len(SetToSeq(Users))
-variables tx, username, notesToSpend;
+variables tx, username = SetToSeq(Users)[self - UserProccessId + 1];
 begin
     CreateTransactions:
-        username := SetToSeq(Users)[self - UserProccessId + 1];
-
-        \* Select notes to spend
-        notesToSpend := SetToSeq({note \in ToSet(userNotes[username]) : note.nullifier \notin nullifierSet});
-
-        \* Create transaction if there are notes to spend
-        if Len(notesToSpend) > 0 then
-            tx := Def!CreateTransaction(
-                username,
-                Def!GenerateNewNotes(username, 1, "null" \o username),
-                {note.nullifier : note \in ToSet(notesToSpend)}
-            );
-            txPool := Append(txPool, tx);
-        end if;
+        tx := Def!CreateTransaction(
+            username,
+            <<Def!GenerateNewNote(username, 1, "null" \o username)>>,
+            {"null" \o username}
+        );
+        txPool := Append(txPool, tx);
 end process;
 
 \* Verify transactions and update the note commitment tree.
@@ -75,103 +67,70 @@ begin
         \* Remove processed block
         blocks := Tail(blocks);
         
-        \* Verify transactions and update the note commitment tree
+        \* Verify transactions, update the note commitment tree and the nullifier set
         with block_tx \in ToSet(block.transactions) do
-            if Def!VerifyTransaction(block_tx, nullifierSet) then
+            if Def!VerifyTransaction(block_tx, nullifierSet, noteCommitmentTreeRoot) then
                 noteCommitmentTreeRoot := Def!UpdateTree(noteCommitmentTreeRoot, block_tx.newNotes);
                 nullifierSet := nullifierSet \union block_tx.nullifiers;
-                \* Decrypt notes and add them to the user's notes                
-                with note \in ToSet(block_tx.newNotes) do
-                    with user \in DOMAIN userKeys do
-                        if Def!CanDecrypt(note, userKeys[user]) then
-                            userNotes[user] := Append(userNotes[user], note);
-                        end if;
-                    end with;
-                end with;
             end if;
         end with;
 end process;
 
-\* Scan the user note commitment tree and calculate the user's balance.
-process Scanner \in ScannerProccessId + 1 .. ScannerProccessId + Len(SetToSeq(Users))
-variables userBalance = 0, userName = SetToSeq(Users)[self - ScannerProccessId], c = 1;
-begin
-    Scan:
-        \* Calculate the user's balance
-        userBalance := Def!SumValidValues(userNotes[userName], nullifierSet);
-        \* Check if the user's balance is greater than 1 if the user has more than one note.
-        if Len(userNotes[userName]) > 1 then
-            assert userBalance > 1;
-        end if;
-end process;
-
 end algorithm; *)
-\* BEGIN TRANSLATION (chksum(pcal) = "f4b0b4c9" /\ chksum(tla) = "1c80cf97")
+\* BEGIN TRANSLATION (chksum(pcal) = "56e268be" /\ chksum(tla) = "d6e4358")
 CONSTANT defaultInitValue
-VARIABLES noteCommitmentTreeRoot, nullifierSet, blocks, userKeys, userNotes, 
-          txPool, pc
+VARIABLES noteCommitmentTreeRoot, nullifierSet, blocks, txPool, pc
 
 (* define statement *)
 LOCAL Def == INSTANCE Definitions
 
-VARIABLES tx, username, notesToSpend, block, userBalance, userName, c
+NoDoubleSpending ==
+    \A block \in ToSet(blocks) :
+        \A tx1, tx2 \in block.transactions :
+            tx1 /= tx2 => tx1.nullifiers \cap tx2.nullifiers = {}
 
-vars == << noteCommitmentTreeRoot, nullifierSet, blocks, userKeys, userNotes, 
-           txPool, pc, tx, username, notesToSpend, block, userBalance, 
-           userName, c >>
+VARIABLES tx, username, block
 
-ProcSet == {MinerProccessId} \cup (UserProccessId .. Len(SetToSeq(Users))) \cup {NodeProccessId} \cup (ScannerProccessId + 1 .. ScannerProccessId + Len(SetToSeq(Users)))
+vars == << noteCommitmentTreeRoot, nullifierSet, blocks, txPool, pc, tx, 
+           username, block >>
+
+ProcSet == {MinerProccessId} \cup (UserProccessId .. Len(SetToSeq(Users))) \cup {NodeProccessId}
 
 Init == (* Global variables *)
-        /\ noteCommitmentTreeRoot = <<>>
+        /\ noteCommitmentTreeRoot = "init"
         /\ nullifierSet = {}
         /\ blocks = <<>>
-        /\ userKeys = [u \in Users |-> Def!GenerateKeyPair(u)]
-        /\ userNotes = [u \in Users |-> <<[receiver |-> "pk" \o u, value |-> 1, nullifier |-> "init" \o u]>>]
         /\ txPool = <<>>
         (* Process User *)
         /\ tx = [self \in UserProccessId .. Len(SetToSeq(Users)) |-> defaultInitValue]
-        /\ username = [self \in UserProccessId .. Len(SetToSeq(Users)) |-> defaultInitValue]
-        /\ notesToSpend = [self \in UserProccessId .. Len(SetToSeq(Users)) |-> defaultInitValue]
+        /\ username = [self \in UserProccessId .. Len(SetToSeq(Users)) |-> SetToSeq(Users)[self - UserProccessId + 1]]
         (* Process Node *)
         /\ block = defaultInitValue
-        (* Process Scanner *)
-        /\ userBalance = [self \in ScannerProccessId + 1 .. ScannerProccessId + Len(SetToSeq(Users)) |-> 0]
-        /\ userName = [self \in ScannerProccessId + 1 .. ScannerProccessId + Len(SetToSeq(Users)) |-> SetToSeq(Users)[self - ScannerProccessId]]
-        /\ c = [self \in ScannerProccessId + 1 .. ScannerProccessId + Len(SetToSeq(Users)) |-> 1]
         /\ pc = [self \in ProcSet |-> CASE self = MinerProccessId -> "Mine"
                                         [] self \in UserProccessId .. Len(SetToSeq(Users)) -> "CreateTransactions"
-                                        [] self = NodeProccessId -> "Verifier"
-                                        [] self \in ScannerProccessId + 1 .. ScannerProccessId + Len(SetToSeq(Users)) -> "Scan"]
+                                        [] self = NodeProccessId -> "Verifier"]
 
 Mine == /\ pc[MinerProccessId] = "Mine"
         /\ Len(txPool) > 0
         /\ blocks' = Append(blocks, [transactions |-> txPool])
         /\ txPool' = <<>>
         /\ pc' = [pc EXCEPT ![MinerProccessId] = "Done"]
-        /\ UNCHANGED << noteCommitmentTreeRoot, nullifierSet, userKeys, 
-                        userNotes, tx, username, notesToSpend, block, 
-                        userBalance, userName, c >>
+        /\ UNCHANGED << noteCommitmentTreeRoot, nullifierSet, tx, username, 
+                        block >>
 
 Miner == Mine
 
 CreateTransactions(self) == /\ pc[self] = "CreateTransactions"
-                            /\ username' = [username EXCEPT ![self] = SetToSeq(Users)[self - UserProccessId + 1]]
-                            /\ notesToSpend' = [notesToSpend EXCEPT ![self] = SetToSeq({note \in ToSet(userNotes[username'[self]]) : note.nullifier \notin nullifierSet})]
-                            /\ IF Len(notesToSpend'[self]) > 0
-                                  THEN /\ tx' = [tx EXCEPT ![self] =       Def!CreateTransaction(
-                                                                         username'[self],
-                                                                         Def!GenerateNewNotes(username'[self], 2, "null" \o username'[self]),
-                                                                         {note.nullifier : note \in ToSet(notesToSpend'[self])}
-                                                                     )]
-                                       /\ txPool' = Append(txPool, tx'[self])
-                                  ELSE /\ TRUE
-                                       /\ UNCHANGED << txPool, tx >>
+                            /\ tx' = [tx EXCEPT ![self] =       Def!CreateTransaction(
+                                                              username[self],
+                                                              <<Def!GenerateNewNote(username[self], 1, "null" \o username[self])>>,
+                                                              {"null" \o username[self]}
+                                                          )]
+                            /\ txPool' = Append(txPool, tx'[self])
                             /\ pc' = [pc EXCEPT ![self] = "Done"]
                             /\ UNCHANGED << noteCommitmentTreeRoot, 
-                                            nullifierSet, blocks, userKeys, 
-                                            userNotes, block, userBalance, 
-                                            userName, c >>
+                                            nullifierSet, blocks, username, 
+                                            block >>
 
 User(self) == CreateTransactions(self)
 
@@ -180,36 +139,15 @@ Verifier == /\ pc[NodeProccessId] = "Verifier"
             /\ block' = Head(blocks)
             /\ blocks' = Tail(blocks)
             /\ \E block_tx \in ToSet(block'.transactions):
-                 IF Def!VerifyTransaction(block_tx, nullifierSet)
+                 IF Def!VerifyTransaction(block_tx, nullifierSet, noteCommitmentTreeRoot)
                     THEN /\ noteCommitmentTreeRoot' = Def!UpdateTree(noteCommitmentTreeRoot, block_tx.newNotes)
                          /\ nullifierSet' = (nullifierSet \union block_tx.nullifiers)
-                         /\ \E note \in ToSet(block_tx.newNotes):
-                              \E user \in DOMAIN userKeys:
-                                IF Def!CanDecrypt(note, userKeys[user])
-                                   THEN /\ userNotes' = [userNotes EXCEPT ![user] = Append(userNotes[user], note)]
-                                   ELSE /\ TRUE
-                                        /\ UNCHANGED userNotes
                     ELSE /\ TRUE
-                         /\ UNCHANGED << noteCommitmentTreeRoot, nullifierSet, 
-                                         userNotes >>
+                         /\ UNCHANGED << noteCommitmentTreeRoot, nullifierSet >>
             /\ pc' = [pc EXCEPT ![NodeProccessId] = "Done"]
-            /\ UNCHANGED << userKeys, txPool, tx, username, notesToSpend, 
-                            userBalance, userName, c >>
+            /\ UNCHANGED << txPool, tx, username >>
 
 Node == Verifier
-
-Scan(self) == /\ pc[self] = "Scan"
-              /\ userBalance' = [userBalance EXCEPT ![self] = Def!SumValidValues(userNotes[userName[self]], nullifierSet)]
-              /\ IF Len(userNotes[userName[self]]) > 1
-                    THEN /\ Assert(userBalance'[self] > 1, 
-                                   "Failure of assertion at line 104, column 13.")
-                    ELSE /\ TRUE
-              /\ pc' = [pc EXCEPT ![self] = "Done"]
-              /\ UNCHANGED << noteCommitmentTreeRoot, nullifierSet, blocks, 
-                              userKeys, userNotes, txPool, tx, username, 
-                              notesToSpend, block, userName, c >>
-
-Scanner(self) == Scan(self)
 
 (* Allow infinite stuttering to prevent deadlock on termination. *)
 Terminating == /\ \A self \in ProcSet: pc[self] = "Done"
@@ -217,7 +155,6 @@ Terminating == /\ \A self \in ProcSet: pc[self] = "Done"
 
 Next == Miner \/ Node
            \/ (\E self \in UserProccessId .. Len(SetToSeq(Users)): User(self))
-           \/ (\E self \in ScannerProccessId + 1 .. ScannerProccessId + Len(SetToSeq(Users)): Scanner(self))
            \/ Terminating
 
 Spec == Init /\ [][Next]_vars

@@ -14,11 +14,8 @@ CHARACTERS == {
     "&", "*", "(", ")", "-", "_", "+", "=", "{", "}", "[", "]", "|", ":", ";", "<", ">", ",", ".", "?"
 }
 
-\* Generate a key pair for a given user.
-GenerateKeyPair(user) == [publicKey |-> "pk_" \o user, privateKey |-> "sk_" \o user]
-
 \* Verify a given proof.
-VerifyProof(proof) == TRUE
+VerifyProof(proof, noteCommitmentTreeRoot) == TRUE
 
 \* Check if a transaction is valid.
 IsValidTransaction(tx) ==
@@ -27,10 +24,10 @@ IsValidTransaction(tx) ==
     /\ Cardinality(tx.nullifiers) > 0
 
 \* Check if a transaction is valid and its nullifiers are not in the given set.
-VerifyTransaction(tx, nullifierSet) ==
+VerifyTransaction(tx, nullifierSet, noteCommitmentTreeRoot) ==
     /\ IsValidTransaction(tx)
     /\ tx.nullifiers \cap nullifierSet = {}
-    /\ VerifyProof(tx.proof)
+    /\ VerifyProof(tx.proof, noteCommitmentTreeRoot)
 
 \* Convert a sequence of characters to a string.
 RECURSIVE SeqToString(_)
@@ -45,13 +42,8 @@ https://stackoverflow.com/questions/72350178/how-to-create-an-array-where-each-i
 *)
 RandomHash(n) == SeqToString(SetToSeq(RandomSubset(n, CHARACTERS)))
 
-\* Append a new note to the note commitment tree.
-UpdateTree(treeRoot, newNotes) == Append(treeRoot, RandomHash(6))
-
-\* Check if a note can be decrypted by a given user.
-CanDecrypt(note, userKey) ==
-    /\ note.receiver = userKey.publicKey
-    /\ note.value > 0
+\* Given a new note, create a new noteCommitmentTreeRoot.
+UpdateTree(treeRoot, newNotes) == RandomHash(6)
 
 \* Generate a proof for a given user.
 GenerateProof(user, newNotes, nullifiers) ==
@@ -68,28 +60,9 @@ CreateTransaction(user, newNotes, nullifiers) ==
     ELSE
         [error |-> "Invalid transaction"]
 
-\* Generate new notes for a given user.
-GenerateNewNotes(user, value, nullifier) ==
-    <<
-        [receiver |-> "pk_" \o user,
-        value |-> value,
-        nullifier |-> RandomHash(6)]
-    >>
-
-\* Sum the values of a sequence of transactions.
-RECURSIVE SumValues(_)
-SumValues(seq) == 
-    IF seq = <<>> THEN 0
-    ELSE Head(seq).value + SumValues(Tail(seq))
-
-\* Sum the values of a sequence of transactions, excluding those with nullifiers in the given set.
-RECURSIVE SumValidValues(_, _)
-SumValidValues(seq, nullifierSet) ==
-    SumValues(
-        Remove(
-            [i \in 1..Len(seq) |-> IF seq[i].nullifier \notin nullifierSet THEN seq[i] ELSE <<>>],
-            <<>>
-        )
-    )
-
+\* Generate a new note for a given user.
+GenerateNewNote(user, value, nullifier) == [
+    receiver |-> "pk_" \o user,
+    value |-> value,
+    nullifier |-> nullifier]
 ====
