@@ -12,10 +12,10 @@ UserProccessId == 1
 (*--algorithm protocol
 
 variables
-    \* Initial root of an empty tree
+    \* The root of the note commitment tree
     noteCommitmentTreeRoot = "init";
-    \* Set of spent note nullifiers
-    nullifierSet = {};
+    \* The root of the nullifier tree
+    nullifierTreeRoot = "init";
     \* Sequence of incoming blocks
     blocks = <<>>;
     \* Transaction pool for miners
@@ -69,17 +69,17 @@ begin
         
         \* Verify transactions, update the note commitment tree and the nullifier set
         with block_tx \in ToSet(block.transactions) do
-            if Def!VerifyTransaction(block_tx, nullifierSet, noteCommitmentTreeRoot) then
+            if Def!VerifyTransaction(block_tx, nullifierTreeRoot, noteCommitmentTreeRoot) then
                 noteCommitmentTreeRoot := Def!UpdateTree(noteCommitmentTreeRoot, block_tx.newNotes);
-                nullifierSet := nullifierSet \union block_tx.nullifiers;
+                nullifierTreeRoot := Def!UpdateTree(nullifierTreeRoot, block_tx.nullifiers)
             end if;
         end with;
 end process;
 
 end algorithm; *)
-\* BEGIN TRANSLATION (chksum(pcal) = "56e268be" /\ chksum(tla) = "d6e4358")
+\* BEGIN TRANSLATION (chksum(pcal) = "ae4e1770" /\ chksum(tla) = "6dfd9c69")
 CONSTANT defaultInitValue
-VARIABLES noteCommitmentTreeRoot, nullifierSet, blocks, txPool, pc
+VARIABLES noteCommitmentTreeRoot, nullifierTreeRoot, blocks, txPool, pc
 
 (* define statement *)
 LOCAL Def == INSTANCE Definitions
@@ -91,14 +91,14 @@ NoDoubleSpending ==
 
 VARIABLES tx, username, block
 
-vars == << noteCommitmentTreeRoot, nullifierSet, blocks, txPool, pc, tx, 
+vars == << noteCommitmentTreeRoot, nullifierTreeRoot, blocks, txPool, pc, tx, 
            username, block >>
 
 ProcSet == {MinerProccessId} \cup (UserProccessId .. Len(SetToSeq(Users))) \cup {NodeProccessId}
 
 Init == (* Global variables *)
         /\ noteCommitmentTreeRoot = "init"
-        /\ nullifierSet = {}
+        /\ nullifierTreeRoot = "init"
         /\ blocks = <<>>
         /\ txPool = <<>>
         (* Process User *)
@@ -115,8 +115,8 @@ Mine == /\ pc[MinerProccessId] = "Mine"
         /\ blocks' = Append(blocks, [transactions |-> txPool])
         /\ txPool' = <<>>
         /\ pc' = [pc EXCEPT ![MinerProccessId] = "Done"]
-        /\ UNCHANGED << noteCommitmentTreeRoot, nullifierSet, tx, username, 
-                        block >>
+        /\ UNCHANGED << noteCommitmentTreeRoot, nullifierTreeRoot, tx, 
+                        username, block >>
 
 Miner == Mine
 
@@ -129,8 +129,8 @@ CreateTransactions(self) == /\ pc[self] = "CreateTransactions"
                             /\ txPool' = Append(txPool, tx'[self])
                             /\ pc' = [pc EXCEPT ![self] = "Done"]
                             /\ UNCHANGED << noteCommitmentTreeRoot, 
-                                            nullifierSet, blocks, username, 
-                                            block >>
+                                            nullifierTreeRoot, blocks, 
+                                            username, block >>
 
 User(self) == CreateTransactions(self)
 
@@ -139,11 +139,12 @@ Verifier == /\ pc[NodeProccessId] = "Verifier"
             /\ block' = Head(blocks)
             /\ blocks' = Tail(blocks)
             /\ \E block_tx \in ToSet(block'.transactions):
-                 IF Def!VerifyTransaction(block_tx, nullifierSet, noteCommitmentTreeRoot)
+                 IF Def!VerifyTransaction(block_tx, nullifierTreeRoot, noteCommitmentTreeRoot)
                     THEN /\ noteCommitmentTreeRoot' = Def!UpdateTree(noteCommitmentTreeRoot, block_tx.newNotes)
-                         /\ nullifierSet' = (nullifierSet \union block_tx.nullifiers)
+                         /\ nullifierTreeRoot' = Def!UpdateTree(nullifierTreeRoot, block_tx.nullifiers)
                     ELSE /\ TRUE
-                         /\ UNCHANGED << noteCommitmentTreeRoot, nullifierSet >>
+                         /\ UNCHANGED << noteCommitmentTreeRoot, 
+                                         nullifierTreeRoot >>
             /\ pc' = [pc EXCEPT ![NodeProccessId] = "Done"]
             /\ UNCHANGED << txPool, tx, username >>
 

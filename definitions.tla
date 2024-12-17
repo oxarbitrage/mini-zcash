@@ -24,9 +24,9 @@ IsValidTransaction(tx) ==
     /\ Cardinality(tx.nullifiers) > 0
 
 \* Check if a transaction is valid and its nullifiers are not in the given set.
-VerifyTransaction(tx, nullifierSet, noteCommitmentTreeRoot) ==
+VerifyTransaction(tx, nullifierTreeRoot, noteCommitmentTreeRoot) ==
     /\ IsValidTransaction(tx)
-    /\ tx.nullifiers \cap nullifierSet = {}
+    /\ VerifyProof(tx.proof, nullifierTreeRoot)
     /\ VerifyProof(tx.proof, noteCommitmentTreeRoot)
 
 \* Convert a sequence of characters to a string.
