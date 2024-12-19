@@ -23,7 +23,7 @@ VerifyBlockHeader(proposed_block, tip_block) == TRUE
 \* Check if a transaction is valid.
 IsValidTransaction(tx) ==
     /\ tx.sender /= ""
-    /\ Len(tx.newNotes) > 0
+    /\ Cardinality(tx.notes) > 0
     /\ Cardinality(tx.nullifiers) > 0
 
 \* Check if a transaction is valid and its nullifiers are not in the given set.
@@ -46,26 +46,26 @@ https://stackoverflow.com/questions/72350178/how-to-create-an-array-where-each-i
 RandomHash(n) == SeqToString(SetToSeq(RandomSubset(n, CHARACTERS)))
 
 \* Given a new note, create a new noteCommitmentTreeRoot.
-UpdateTree(treeRoot, newNotes) == RandomHash(6)
+UpdateTree(treeRoot, notes) == RandomHash(6)
 
 \* Generate a proof for a given user.
 GenerateProof(user, newNotes, nullifiers) ==
     \* TODO: Implement some sort of proof generation
     RandomHash(6)
 
-\* Create a transaction for a given user.
-CreateTransaction(user, newNotes, nullifiers) ==
-    IF Len(newNotes) > 0 THEN
+\* Create a transaction from a given user to a "receiver".
+CreateTransaction(user, notes, nullifiers) ==
+    IF Cardinality(notes) > 0 /\ Cardinality(nullifiers) > 0 /\ Cardinality(notes) = Cardinality(nullifiers) THEN
         [sender |-> user,
-         newNotes |-> newNotes,
+         notes |-> notes,
          nullifiers |-> nullifiers,
-         proof |-> GenerateProof(user, newNotes, nullifiers)]
+         proof |-> GenerateProof(user, notes, nullifiers)]
     ELSE
         [error |-> "Invalid transaction"]
 
-\* Generate a new note for a given user.
-GenerateNewNote(user, value, nullifier) == [
-    receiver |-> "pk_" \o user,
+\* Generate a new directed to a "receiver".
+GenerateNewNote(value, nullifier) == [
+    receiver |-> "receiver",
     value |-> value,
     nullifier |-> nullifier]
 ====
