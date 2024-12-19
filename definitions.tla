@@ -17,6 +17,9 @@ CHARACTERS == {
 \* Verify a given proof.
 VerifyProof(proof, noteCommitmentTreeRoot) == TRUE
 
+\* Verify a given block header.
+VerifyBlockHeader(proposed_block, tip_block) == TRUE
+
 \* Check if a transaction is valid.
 IsValidTransaction(tx) ==
     /\ tx.sender /= ""
