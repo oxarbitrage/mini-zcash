@@ -20,17 +20,8 @@ VerifyProof(proof, noteCommitmentTreeRoot) == TRUE
 \* Verify a given block header.
 VerifyBlockHeader(proposed_block, tip_block) == TRUE
 
-\* Check if a transaction is valid.
-IsValidTransaction(tx) ==
-    /\ tx.sender /= ""
-    /\ Cardinality(tx.notes) > 0
-    /\ Cardinality(tx.nullifiers) > 0
-
-\* Check if a transaction is valid and its nullifiers are not in the given set.
-VerifyTransaction(tx, nullifierTreeRoot, noteCommitmentTreeRoot) ==
-    /\ IsValidTransaction(tx)
-    /\ VerifyProof(tx.proof, nullifierTreeRoot)
-    /\ VerifyProof(tx.proof, noteCommitmentTreeRoot)
+\* Verify a given transaction.
+VerifyTransaction(tx, nullifierTreeRoot, noteCommitmentTreeRoot) == TRUE
 
 \* Convert a sequence of characters to a string.
 RECURSIVE SeqToString(_)
@@ -45,27 +36,19 @@ https://stackoverflow.com/questions/72350178/how-to-create-an-array-where-each-i
 *)
 RandomHash(n) == SeqToString(SetToSeq(RandomSubset(n, CHARACTERS)))
 
-\* Given a new note, create a new noteCommitmentTreeRoot.
-UpdateTree(treeRoot, notes) == RandomHash(6)
+\* Given two hashes, create a new hash.
+Hash(a, b) == RandomHash(6)
 
-\* Generate a proof for a given user.
-GenerateProof(user, newNotes, nullifiers) ==
-    \* TODO: Implement some sort of proof generation
-    RandomHash(6)
+\* Given some text and a tree, create a new tree hash.
+UpdateTree(tree, text) == RandomHash(6)
 
-\* Create a transaction from a given user to a "receiver".
-CreateTransaction(user, notes, nullifiers) ==
-    IF Cardinality(notes) > 0 /\ Cardinality(nullifiers) > 0 /\ Cardinality(notes) = Cardinality(nullifiers) THEN
-        [sender |-> user,
-         notes |-> notes,
-         nullifiers |-> nullifiers,
-         proof |-> GenerateProof(user, notes, nullifiers)]
-    ELSE
-        [error |-> "Invalid transaction"]
+\* Generate a proof for a given set of actions.
+GenerateProof(actions) == RandomHash(6)
 
-\* Generate a new directed to a "receiver".
-GenerateNewNote(value, nullifier) == [
-    receiver |-> "receiver",
-    value |-> value,
-    nullifier |-> nullifier]
+\* Create a transaction for a given set of actions.
+OrchardTransaction(actions) == [
+    actions |-> actions,
+    proof |-> GenerateProof(actions)
+]
+
 ====

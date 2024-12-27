@@ -1,5 +1,5 @@
 ---- MODULE protocol ----
-EXTENDS TLC, Naturals, FiniteSets, Sequences, Utils
+EXTENDS TLC, Naturals, FiniteSets, Sequences, Utils, Definitions
 
 \* Define the set of users
 CONSTANT Users
@@ -22,8 +22,15 @@ variables
     txPool = {};
     \* The proposed block from a mniner
     proposed_block;
+
 define
-    LOCAL Def == INSTANCE Definitions
+    \* The height of the blockchain always increases
+    HeightAlwaysIncreases == [][tip_block'.height > tip_block.height]_tip_block
+
+    NoDoubleSpending ==
+        \A tx \in txPool :
+            \A action1, action2 \in tx.actions :
+                action1 /= action2 => action1.nullifier /= action2.nullifier
 end define;
 
 \* Mine transactions and add them to the blockchain.
@@ -32,7 +39,7 @@ begin
     Mine:
         \* As soon as we have transactions
         await Cardinality(txPool) > 0;
-        \* Add tranactions to a block and propose it to the blockchain
+        \* Add transactions to a block and propose it to the blockchain
         proposed_block := [height |-> tip_block.height + 1, txs |-> txPool];
         \* Clear the transaction pool
         txPool := {};
@@ -42,15 +49,17 @@ end process;
 process User \in UserProccessId .. Cardinality(Users)
 variables 
     tx_,
-    username = SetToSeq(Users)[self],
-    nullifier = "null" \o username;
+    actions;
 begin
-    CreateTransactions:
-        tx_ := Def!CreateTransaction(
-            username,
-            {Def!GenerateNewNote(10, nullifier)},
-            {nullifier}
-        );
+    CreateTx:
+        actions := {[
+            nullifier |-> RandomHash(6),
+            commitment |-> RandomHash(6),
+            value |-> 10,
+            receiver |-> "receiver"
+        ]};
+
+        tx_ := OrchardTransaction(actions);
         txPool := txPool \cup {tx_};
 end process;
 
@@ -61,13 +70,13 @@ begin
         \* Wait for a block proposal
         await proposed_block # defaultInitValue;
     
-        if Def!VerifyBlockHeader(proposed_block, tip_block) then        
+        if VerifyBlockHeader(proposed_block, tip_block) then
             with tx \in proposed_block.txs do
-                if Def!VerifyTransaction(tx, nullifierTreeRoot, noteCommitmentTreeRoot) then
-                    \* Update the note commitment tree with new notes from the transaction.
-                    noteCommitmentTreeRoot := Def!UpdateTree(noteCommitmentTreeRoot, tx.newNotes);
-                    \* Update the nullifier tree with nullifiers from the transaction.
-                    nullifierTreeRoot := Def!UpdateTree(nullifierTreeRoot, tx.nullifiers)
+                if VerifyTransaction(tx, nullifierTreeRoot, noteCommitmentTreeRoot) then
+                    with action \in tx.actions do
+                        nullifierTreeRoot := UpdateTree(nullifierTreeRoot, action.nullifier);
+                        noteCommitmentTreeRoot := UpdateTree(noteCommitmentTreeRoot, action.commitment);
+                    end with;
                 end if;
             end with;
         end if;
@@ -76,18 +85,23 @@ begin
 end process;
 
 end algorithm; *)
-\* BEGIN TRANSLATION (chksum(pcal) = "7e550db3" /\ chksum(tla) = "77cc42b")
+\* BEGIN TRANSLATION (chksum(pcal) = "abbb4aaa" /\ chksum(tla) = "97112ef8")
 CONSTANT defaultInitValue
 VARIABLES noteCommitmentTreeRoot, nullifierTreeRoot, tip_block, txPool, 
           proposed_block, pc
 
 (* define statement *)
-LOCAL Def == INSTANCE Definitions
+HeightAlwaysIncreases == [][tip_block'.height > tip_block.height]_tip_block
 
-VARIABLES tx_, username, nullifier
+NoDoubleSpending ==
+    \A tx \in txPool :
+        \A action1, action2 \in tx.actions :
+            action1 /= action2 => action1.nullifier /= action2.nullifier
+
+VARIABLES tx_, actions
 
 vars == << noteCommitmentTreeRoot, nullifierTreeRoot, tip_block, txPool, 
-           proposed_block, pc, tx_, username, nullifier >>
+           proposed_block, pc, tx_, actions >>
 
 ProcSet == {MinerProccessId} \cup (UserProccessId .. Cardinality(Users)) \cup {NodeProccessId}
 
@@ -99,10 +113,9 @@ Init == (* Global variables *)
         /\ proposed_block = defaultInitValue
         (* Process User *)
         /\ tx_ = [self \in UserProccessId .. Cardinality(Users) |-> defaultInitValue]
-        /\ username = [self \in UserProccessId .. Cardinality(Users) |-> SetToSeq(Users)[self]]
-        /\ nullifier = [self \in UserProccessId .. Cardinality(Users) |-> "null" \o username[self]]
+        /\ actions = [self \in UserProccessId .. Cardinality(Users) |-> defaultInitValue]
         /\ pc = [self \in ProcSet |-> CASE self = MinerProccessId -> "Mine"
-                                        [] self \in UserProccessId .. Cardinality(Users) -> "CreateTransactions"
+                                        [] self \in UserProccessId .. Cardinality(Users) -> "CreateTx"
                                         [] self = NodeProccessId -> "Verify"]
 
 Mine == /\ pc[MinerProccessId] = "Mine"
@@ -111,32 +124,33 @@ Mine == /\ pc[MinerProccessId] = "Mine"
         /\ txPool' = {}
         /\ pc' = [pc EXCEPT ![MinerProccessId] = "Done"]
         /\ UNCHANGED << noteCommitmentTreeRoot, nullifierTreeRoot, tip_block, 
-                        tx_, username, nullifier >>
+                        tx_, actions >>
 
 Miner == Mine
 
-CreateTransactions(self) == /\ pc[self] = "CreateTransactions"
-                            /\ tx_' = [tx_ EXCEPT ![self] =        Def!CreateTransaction(
-                                                                username[self],
-                                                                {Def!GenerateNewNote(10, nullifier[self])},
-                                                                {nullifier[self]}
-                                                            )]
-                            /\ txPool' = (txPool \cup {tx_'[self]})
-                            /\ pc' = [pc EXCEPT ![self] = "Done"]
-                            /\ UNCHANGED << noteCommitmentTreeRoot, 
-                                            nullifierTreeRoot, tip_block, 
-                                            proposed_block, username, 
-                                            nullifier >>
+CreateTx(self) == /\ pc[self] = "CreateTx"
+                  /\ actions' = [actions EXCEPT ![self] =            {[
+                                                              nullifier |-> RandomHash(6),
+                                                              commitment |-> RandomHash(6),
+                                                              value |-> 10,
+                                                              receiver |-> "receiver"
+                                                          ]}]
+                  /\ tx_' = [tx_ EXCEPT ![self] = OrchardTransaction(actions'[self])]
+                  /\ txPool' = (txPool \cup {tx_'[self]})
+                  /\ pc' = [pc EXCEPT ![self] = "Done"]
+                  /\ UNCHANGED << noteCommitmentTreeRoot, nullifierTreeRoot, 
+                                  tip_block, proposed_block >>
 
-User(self) == CreateTransactions(self)
+User(self) == CreateTx(self)
 
 Verify == /\ pc[NodeProccessId] = "Verify"
           /\ proposed_block # defaultInitValue
-          /\ IF Def!VerifyBlockHeader(proposed_block, tip_block)
+          /\ IF VerifyBlockHeader(proposed_block, tip_block)
                 THEN /\ \E tx \in proposed_block.txs:
-                          IF Def!VerifyTransaction(tx, nullifierTreeRoot, noteCommitmentTreeRoot)
-                             THEN /\ noteCommitmentTreeRoot' = Def!UpdateTree(noteCommitmentTreeRoot, tx.newNotes)
-                                  /\ nullifierTreeRoot' = Def!UpdateTree(nullifierTreeRoot, tx.nullifiers)
+                          IF VerifyTransaction(tx, nullifierTreeRoot, noteCommitmentTreeRoot)
+                             THEN /\ \E action \in tx.actions:
+                                       /\ nullifierTreeRoot' = UpdateTree(nullifierTreeRoot, action.nullifier)
+                                       /\ noteCommitmentTreeRoot' = UpdateTree(noteCommitmentTreeRoot, action.commitment)
                              ELSE /\ TRUE
                                   /\ UNCHANGED << noteCommitmentTreeRoot, 
                                                   nullifierTreeRoot >>
@@ -144,7 +158,7 @@ Verify == /\ pc[NodeProccessId] = "Verify"
                      /\ UNCHANGED << noteCommitmentTreeRoot, nullifierTreeRoot >>
           /\ proposed_block' = defaultInitValue
           /\ pc' = [pc EXCEPT ![NodeProccessId] = "Done"]
-          /\ UNCHANGED << tip_block, txPool, tx_, username, nullifier >>
+          /\ UNCHANGED << tip_block, txPool, tx_, actions >>
 
 Node == Verify
 
