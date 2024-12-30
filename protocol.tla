@@ -27,6 +27,11 @@ define
     \* The height of the blockchain always increases
     HeightAlwaysIncreases == [][tip_block'.height > tip_block.height]_tip_block
 
+    \* Transactions in the transaction pool are eventually processed
+    TransactionsEventuallyProcessed ==
+        (Cardinality(txPool) > 0) => <> (Cardinality(txPool) = 0)
+
+    \* For each transaction in the transaction pool, the nullifier is unique
     NoDoubleSpending ==
         \A tx \in txPool :
             \A action1, action2 \in tx.actions :
@@ -34,7 +39,7 @@ define
 end define;
 
 \* Mine transactions and add them to the blockchain.
-process Miner = MinerProccessId
+fair process Miner = MinerProccessId
 begin
     Mine:
         \* As soon as we have transactions
@@ -46,12 +51,13 @@ begin
 end process;
 
 \* For each user, create transactions and add them to the transaction pool.
-process User \in UserProccessId .. Cardinality(Users)
+fair process User \in UserProccessId .. Cardinality(Users)
 variables 
     tx_,
     actions;
 begin
     CreateTx:
+        await txPool = {};
         actions := {[
             nullifier |-> RandomHash(6),
             commitment |-> RandomHash(6),
@@ -60,11 +66,11 @@ begin
         ]};
 
         tx_ := OrchardTransaction(actions);
-        txPool := txPool \cup {tx_};
+        txPool := {tx_};
 end process;
 
 \* Verify proposed block and it's transactions. Update the note commitment and nullifier trees.
-process Node = NodeProccessId
+fair process Node = NodeProccessId
 begin
     Verify:
         \* Wait for a block proposal
@@ -85,13 +91,18 @@ begin
 end process;
 
 end algorithm; *)
-\* BEGIN TRANSLATION (chksum(pcal) = "abbb4aaa" /\ chksum(tla) = "97112ef8")
+\* BEGIN TRANSLATION (chksum(pcal) = "bb706f6" /\ chksum(tla) = "c2b7ca71")
 CONSTANT defaultInitValue
 VARIABLES noteCommitmentTreeRoot, nullifierTreeRoot, tip_block, txPool, 
           proposed_block, pc
 
 (* define statement *)
 HeightAlwaysIncreases == [][tip_block'.height > tip_block.height]_tip_block
+
+
+TransactionsEventuallyProcessed ==
+    (Cardinality(txPool) > 0) => <> (Cardinality(txPool) = 0)
+
 
 NoDoubleSpending ==
     \A tx \in txPool :
@@ -129,6 +140,7 @@ Mine == /\ pc[MinerProccessId] = "Mine"
 Miner == Mine
 
 CreateTx(self) == /\ pc[self] = "CreateTx"
+                  /\ txPool = {}
                   /\ actions' = [actions EXCEPT ![self] =            {[
                                                               nullifier |-> RandomHash(6),
                                                               commitment |-> RandomHash(6),
@@ -136,7 +148,7 @@ CreateTx(self) == /\ pc[self] = "CreateTx"
                                                               receiver |-> "receiver"
                                                           ]}]
                   /\ tx_' = [tx_ EXCEPT ![self] = OrchardTransaction(actions'[self])]
-                  /\ txPool' = (txPool \cup {tx_'[self]})
+                  /\ txPool' = {tx_'[self]}
                   /\ pc' = [pc EXCEPT ![self] = "Done"]
                   /\ UNCHANGED << noteCommitmentTreeRoot, nullifierTreeRoot, 
                                   tip_block, proposed_block >>
@@ -170,7 +182,10 @@ Next == Miner \/ Node
            \/ (\E self \in UserProccessId .. Cardinality(Users): User(self))
            \/ Terminating
 
-Spec == Init /\ [][Next]_vars
+Spec == /\ Init /\ [][Next]_vars
+        /\ WF_vars(Miner)
+        /\ \A self \in UserProccessId .. Cardinality(Users) : WF_vars(User(self))
+        /\ WF_vars(Node)
 
 Termination == <>(\A self \in ProcSet: pc[self] = "Done")
 
