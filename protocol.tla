@@ -12,10 +12,10 @@ UserProccessId == 1
 (*--algorithm protocol
 
 variables
-    \* The root of the note commitment tree
-    noteCommitmentTreeRoot = "";
-    \* The root of the nullifier tree
-    nullifierTreeRoot = "";
+    \* A compact zk-SNARK proof that summarizes the mnerkle tree of all note commitments.
+    noteCommitmentProof = "";
+    \* A compact zk-SNARK proof that summarizes the mnerkle tree of all nullifiers.
+    nullifierProof = "";
     \* The blockchain accepted tip block
     tip_block = [height |-> 1, transactions |-> <<>>];
     \* Transaction pool for miners
@@ -59,13 +59,13 @@ begin
     CreateTx:
         await txPool = {};
         actions := {[
-            nullifier |-> RandomHash(6),
-            commitment |-> RandomHash(6),
+            nullifier |-> RandomHash(4),
+            commitment |-> RandomHash(4),
             value |-> 10,
             receiver |-> "receiver"
         ]};
-
-        tx_ := OrchardTransaction(actions);
+        \* need nullifir?
+        tx_ := OrchardTransaction(actions, GenerateZKProof(actions, noteCommitmentProof));
         txPool := {tx_};
 end process;
 
@@ -78,10 +78,11 @@ begin
     
         if VerifyBlockHeader(proposed_block, tip_block) then
             with tx \in proposed_block.txs do
-                if VerifyTransaction(tx, nullifierTreeRoot, noteCommitmentTreeRoot) then
+                if VerifyZKProof(tx.proof, noteCommitmentProof, nullifierProof) then
                     with action \in tx.actions do
-                        nullifierTreeRoot := UpdateTree(nullifierTreeRoot, action.nullifier);
-                        noteCommitmentTreeRoot := UpdateTree(noteCommitmentTreeRoot, action.commitment);
+                        \* Update the note commitment and nullifier trees, generate new compact proofs for them.
+                        noteCommitmentProof := GenerateZKProof(action.nullifier, noteCommitmentProof);
+                        nullifierProof := GenerateZKProof(action.commitment, nullifierProof);
                     end with;
                 end if;
             end with;
@@ -91,9 +92,9 @@ begin
 end process;
 
 end algorithm; *)
-\* BEGIN TRANSLATION (chksum(pcal) = "bb706f6" /\ chksum(tla) = "c2b7ca71")
+\* BEGIN TRANSLATION (chksum(pcal) = "866057ab" /\ chksum(tla) = "316214bf")
 CONSTANT defaultInitValue
-VARIABLES noteCommitmentTreeRoot, nullifierTreeRoot, tip_block, txPool, 
+VARIABLES noteCommitmentProof, nullifierProof, tip_block, txPool, 
           proposed_block, pc
 
 (* define statement *)
@@ -111,14 +112,14 @@ NoDoubleSpending ==
 
 VARIABLES tx_, actions
 
-vars == << noteCommitmentTreeRoot, nullifierTreeRoot, tip_block, txPool, 
+vars == << noteCommitmentProof, nullifierProof, tip_block, txPool, 
            proposed_block, pc, tx_, actions >>
 
 ProcSet == {MinerProccessId} \cup (UserProccessId .. Cardinality(Users)) \cup {NodeProccessId}
 
 Init == (* Global variables *)
-        /\ noteCommitmentTreeRoot = ""
-        /\ nullifierTreeRoot = ""
+        /\ noteCommitmentProof = ""
+        /\ nullifierProof = ""
         /\ tip_block = [height |-> 1, transactions |-> <<>>]
         /\ txPool = {}
         /\ proposed_block = defaultInitValue
@@ -134,23 +135,23 @@ Mine == /\ pc[MinerProccessId] = "Mine"
         /\ proposed_block' = [height |-> tip_block.height + 1, txs |-> txPool]
         /\ txPool' = {}
         /\ pc' = [pc EXCEPT ![MinerProccessId] = "Done"]
-        /\ UNCHANGED << noteCommitmentTreeRoot, nullifierTreeRoot, tip_block, 
-                        tx_, actions >>
+        /\ UNCHANGED << noteCommitmentProof, nullifierProof, tip_block, tx_, 
+                        actions >>
 
 Miner == Mine
 
 CreateTx(self) == /\ pc[self] = "CreateTx"
                   /\ txPool = {}
                   /\ actions' = [actions EXCEPT ![self] =            {[
-                                                              nullifier |-> RandomHash(6),
-                                                              commitment |-> RandomHash(6),
+                                                              nullifier |-> RandomHash(4),
+                                                              commitment |-> RandomHash(4),
                                                               value |-> 10,
                                                               receiver |-> "receiver"
                                                           ]}]
-                  /\ tx_' = [tx_ EXCEPT ![self] = OrchardTransaction(actions'[self])]
+                  /\ tx_' = [tx_ EXCEPT ![self] = OrchardTransaction(actions'[self], GenerateZKProof(actions'[self], noteCommitmentProof))]
                   /\ txPool' = {tx_'[self]}
                   /\ pc' = [pc EXCEPT ![self] = "Done"]
-                  /\ UNCHANGED << noteCommitmentTreeRoot, nullifierTreeRoot, 
+                  /\ UNCHANGED << noteCommitmentProof, nullifierProof, 
                                   tip_block, proposed_block >>
 
 User(self) == CreateTx(self)
@@ -159,15 +160,15 @@ Verify == /\ pc[NodeProccessId] = "Verify"
           /\ proposed_block # defaultInitValue
           /\ IF VerifyBlockHeader(proposed_block, tip_block)
                 THEN /\ \E tx \in proposed_block.txs:
-                          IF VerifyTransaction(tx, nullifierTreeRoot, noteCommitmentTreeRoot)
+                          IF VerifyZKProof(tx.proof, noteCommitmentProof, nullifierProof)
                              THEN /\ \E action \in tx.actions:
-                                       /\ nullifierTreeRoot' = UpdateTree(nullifierTreeRoot, action.nullifier)
-                                       /\ noteCommitmentTreeRoot' = UpdateTree(noteCommitmentTreeRoot, action.commitment)
+                                       /\ noteCommitmentProof' = GenerateZKProof(action.nullifier, noteCommitmentProof)
+                                       /\ nullifierProof' = GenerateZKProof(action.commitment, nullifierProof)
                              ELSE /\ TRUE
-                                  /\ UNCHANGED << noteCommitmentTreeRoot, 
-                                                  nullifierTreeRoot >>
+                                  /\ UNCHANGED << noteCommitmentProof, 
+                                                  nullifierProof >>
                 ELSE /\ TRUE
-                     /\ UNCHANGED << noteCommitmentTreeRoot, nullifierTreeRoot >>
+                     /\ UNCHANGED << noteCommitmentProof, nullifierProof >>
           /\ proposed_block' = defaultInitValue
           /\ pc' = [pc EXCEPT ![NodeProccessId] = "Done"]
           /\ UNCHANGED << tip_block, txPool, tx_, actions >>

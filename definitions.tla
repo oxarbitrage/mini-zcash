@@ -14,14 +14,8 @@ CHARACTERS == {
     "&", "*", "(", ")", "-", "_", "+", "=", "{", "}", "[", "]", "|", ":", ";", "<", ">", ",", ".", "?"
 }
 
-\* Verify a given proof.
-VerifyProof(proof, noteCommitmentTreeRoot) == TRUE
-
 \* Verify a given block header.
 VerifyBlockHeader(proposed_block, tip_block) == TRUE
-
-\* Verify a given transaction.
-VerifyTransaction(tx, nullifierTreeRoot, noteCommitmentTreeRoot) == TRUE
 
 \* Convert a sequence of characters to a string.
 RECURSIVE SeqToString(_)
@@ -36,19 +30,19 @@ https://stackoverflow.com/questions/72350178/how-to-create-an-array-where-each-i
 *)
 RandomHash(n) == SeqToString(SetToSeq(RandomSubset(n, CHARACTERS)))
 
-\* Given two hashes, create a new hash.
-Hash(a, b) == RandomHash(6)
-
 \* Given some text and a tree, create a new tree hash.
-UpdateTree(tree, text) == RandomHash(6)
+UpdateTree(tree, text) == RandomHash(4)
 
-\* Generate a proof for a given set of actions.
-GenerateProof(actions) == RandomHash(6)
+GenerateZKProof(data, previousProof) ==
+    \* Generate a zk-SNARK proof summarizing the current state
+    RandomHash(6)
+
+VerifyZKProof(proof, noteCommitmentProof, nullifierProof) == TRUE
 
 \* Create a transaction for a given set of actions.
-OrchardTransaction(actions) == [
+OrchardTransaction(actions, proof) == [
     actions |-> actions,
-    proof |-> GenerateProof(actions)
+    proof |-> GenerateZKProof(actions, proof)
 ]
 
 ====
