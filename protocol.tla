@@ -5,7 +5,7 @@ EXTENDS TLC, Naturals, FiniteSets, Sequences, Utils, Definitions
 CONSTANT Users
 
 \* Define the process ids
-MinerProccessId == 10000
+ProducerProccessId == 10000
 NodeProccessId == 10001
 UserProccessId == 1
 
@@ -18,7 +18,7 @@ variables
     nullifierProof = "";
     \* The blockchain accepted tip block
     tip_block = [height |-> 1, transactions |-> <<>>];
-    \* Transaction pool for miners
+    \* Transaction pool for producers to build blocks
     txPool = {};
     \* The proposed block from a mniner
     proposed_block;
@@ -38,8 +38,8 @@ define
                 action1 /= action2 => action1.nullifier /= action2.nullifier
 end define;
 
-\* Mine transactions and add them to the blockchain.
-fair process Miner = MinerProccessId
+\* Get transactions from the pool and add them as blocks to the blockchain.
+fair process Producer = ProducerProccessId
 begin
     Mine:
         \* As soon as we have transactions
@@ -92,10 +92,10 @@ begin
 end process;
 
 end algorithm; *)
-\* BEGIN TRANSLATION (chksum(pcal) = "866057ab" /\ chksum(tla) = "316214bf")
+\* BEGIN TRANSLATION (chksum(pcal) = "2685806f" /\ chksum(tla) = "a9f6492a")
 CONSTANT defaultInitValue
-VARIABLES noteCommitmentProof, nullifierProof, tip_block, txPool, 
-          proposed_block, pc
+VARIABLES pc, noteCommitmentProof, nullifierProof, tip_block, txPool, 
+          proposed_block
 
 (* define statement *)
 HeightAlwaysIncreases == [][tip_block'.height > tip_block.height]_tip_block
@@ -112,10 +112,10 @@ NoDoubleSpending ==
 
 VARIABLES tx_, actions
 
-vars == << noteCommitmentProof, nullifierProof, tip_block, txPool, 
-           proposed_block, pc, tx_, actions >>
+vars == << pc, noteCommitmentProof, nullifierProof, tip_block, txPool, 
+           proposed_block, tx_, actions >>
 
-ProcSet == {MinerProccessId} \cup (UserProccessId .. Cardinality(Users)) \cup {NodeProccessId}
+ProcSet == {ProducerProccessId} \cup (UserProccessId .. Cardinality(Users)) \cup {NodeProccessId}
 
 Init == (* Global variables *)
         /\ noteCommitmentProof = ""
@@ -126,19 +126,19 @@ Init == (* Global variables *)
         (* Process User *)
         /\ tx_ = [self \in UserProccessId .. Cardinality(Users) |-> defaultInitValue]
         /\ actions = [self \in UserProccessId .. Cardinality(Users) |-> defaultInitValue]
-        /\ pc = [self \in ProcSet |-> CASE self = MinerProccessId -> "Mine"
+        /\ pc = [self \in ProcSet |-> CASE self = ProducerProccessId -> "Mine"
                                         [] self \in UserProccessId .. Cardinality(Users) -> "CreateTx"
                                         [] self = NodeProccessId -> "Verify"]
 
-Mine == /\ pc[MinerProccessId] = "Mine"
+Mine == /\ pc[ProducerProccessId] = "Mine"
         /\ Cardinality(txPool) > 0
         /\ proposed_block' = [height |-> tip_block.height + 1, txs |-> txPool]
         /\ txPool' = {}
-        /\ pc' = [pc EXCEPT ![MinerProccessId] = "Done"]
+        /\ pc' = [pc EXCEPT ![ProducerProccessId] = "Done"]
         /\ UNCHANGED << noteCommitmentProof, nullifierProof, tip_block, tx_, 
                         actions >>
 
-Miner == Mine
+Producer == Mine
 
 CreateTx(self) == /\ pc[self] = "CreateTx"
                   /\ txPool = {}
@@ -179,12 +179,12 @@ Node == Verify
 Terminating == /\ \A self \in ProcSet: pc[self] = "Done"
                /\ UNCHANGED vars
 
-Next == Miner \/ Node
+Next == Producer \/ Node
            \/ (\E self \in UserProccessId .. Cardinality(Users): User(self))
            \/ Terminating
 
 Spec == /\ Init /\ [][Next]_vars
-        /\ WF_vars(Miner)
+        /\ WF_vars(Producer)
         /\ \A self \in UserProccessId .. Cardinality(Users) : WF_vars(User(self))
         /\ WF_vars(Node)
 

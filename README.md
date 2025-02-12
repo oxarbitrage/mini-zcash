@@ -14,7 +14,7 @@ The protocol consists of three processes:
 - **User:**
     - Create transactions. 
     - Sends transactions to the transaction pool.
-- **Miner:**
+- **Producer:**
     - Gathers transactions from the transaction pool. 
     - Proposes blocks.
 - **Node:**
@@ -25,14 +25,14 @@ The protocol consists of three processes:
 ```mermaid
 flowchart TD
 USER[[USER]] --> |Create transaction|txPool
-MINER[[MINER]] --> |Propose block|blocks
+PRODUCER[[PRODUCER]] --> |Propose block|blocks
 NODE[[NODE]] --> |Update|commitments
 NODE[[NODE]] --> |Update|nullifiers
 
-txPool --> |Add Transactions|MINER
+txPool --> |Add Transactions|PRODUCER
 blocks --> |Add block|NODE
 
-MINER --> |Remove transaction|txPool
+PRODUCER --> |Remove transaction|txPool
 NODE --> |Remove block|blocks
 
 nullifiers --> |Balance|USER
