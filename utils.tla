@@ -1,4 +1,4 @@
--------------------------------- MODULE Utils -------------------------------
+-------------------------------- MODULE utils -------------------------------
 LOCAL INSTANCE Sequences
 LOCAL INSTANCE Naturals
 LOCAL INSTANCE FiniteSets

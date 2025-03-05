@@ -1,7 +1,7 @@
----- MODULE Definitions ----
+---- MODULE definitions ----
 LOCAL INSTANCE Integers
 LOCAL INSTANCE Sequences
-LOCAL INSTANCE Utils
+LOCAL INSTANCE utils
 LOCAL INSTANCE FiniteSets
 LOCAL INSTANCE TLC
 LOCAL INSTANCE Randomization

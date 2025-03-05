@@ -1,5 +1,5 @@
 ---- MODULE protocol ----
-EXTENDS TLC, Naturals, FiniteSets, Sequences, Utils, Definitions
+EXTENDS TLC, Naturals, FiniteSets, Sequences, utils, definitions
 
 \* Define the set of users
 CONSTANT Users
