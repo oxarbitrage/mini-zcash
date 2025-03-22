@@ -5,7 +5,7 @@ This project models a theoretical **succinct version of the Zcash blockchain**, 
 - **Constant storage** efficiency for all parties, regardless of the number of transactions or blocks.
 - **Full privacy** using Zcash Orchard technology for transactions and efficient ZK-SNARK proofs.
 - **Non-auditability**, focusing solely on the current state by using Merkle tree compact representations to store commitments and nullifiers.
-- **Abstract consensus mechanism**, with the focus on transaction verification and state updates.
+- **Abstract consensus mechanism**, with the focus just on transaction verification and state updates.
 
 ## The protocol
 
@@ -47,19 +47,19 @@ The number of states in the model grows as more users are added in the [configur
 
 ## Protocol theorems
 
-The goal is to formally prove properties of the protocol. Some properties are proven using TLA temporal logic and checked by TLC, other properties are classical text proofs.
+The goal is to prove some properties of the protocol. Some properties are proven using TLA temporal logic and checked by TLC, other properties are classical text proofs.
 
 ### Liveness
 
-- `HeightAlwaysIncreases`
+- `HeightAlwaysIncreases`: Ensure that the height of the blockchain always increases.
 
 ### Safety
 
-- `NoDoubleSpending`
+- `NoDoubleSpending`: Ensure that no double-spending occurs.
 
 ### Transactions
 
-- `TransactionsEventuallyProcessed`
+- `TransactionsEventuallyProcessed`: Ensure that all transactions are eventually processed.
 
 ### Balances
 
