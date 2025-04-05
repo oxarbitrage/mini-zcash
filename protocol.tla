@@ -17,22 +17,6 @@ variables
 define
 end define;
 
-\* Producer process: assembles transactions into a block and computes updated state commitments and nullifiers.
-fair process Producer = "Producer"
-begin
-    Produce:
-        \* Wait until there is at least one transaction in the pool.
-        await Cardinality(txPool) > 0;
-        \* Create a new block with an incremented height and the transactions from the pool.
-        proposed_block :=
-        [
-            height                  |-> tip_block.height + 1,
-            txs                     |-> txPool
-        ];
-        \* Clear the transaction pool after block creation.
-        txPool := {};
-end process;
-
 \* User process: User creates actions and a proof, use that to build a transaction and add it to the pool.
 fair process User = "User"
 variables 
@@ -61,6 +45,22 @@ begin
         ]};
 end process;
 
+\* Producer process: assembles transactions into a block and computes updated state commitments and nullifiers.
+fair process Producer = "Producer"
+begin
+    Produce:
+        \* Wait until there is at least one transaction in the pool.
+        await Cardinality(txPool) > 0;
+        \* Create a new block with an incremented height and the transactions from the pool.
+        proposed_block :=
+        [
+            height                  |-> tip_block.height + 1,
+            txs                     |-> txPool
+        ];
+        \* Clear the transaction pool after block creation.
+        txPool := {};
+end process;
+
 \* Node process: verifies the proposed block and updates the state.
 fair process Node = "Node"
 begin
@@ -84,7 +84,7 @@ begin
 end process;
 
 end algorithm; *)
-\* BEGIN TRANSLATION (chksum(pcal) = "a9c9d27b" /\ chksum(tla) = "576f4568")
+\* BEGIN TRANSLATION (chksum(pcal) = "f6539c5" /\ chksum(tla) = "e3a705b7")
 CONSTANT defaultInitValue
 VARIABLES pc, noteCommitmentRoot, nullifierRoot, tip_block, txPool, 
           proposed_block, tx_, actions, nullifier, commitment
@@ -92,7 +92,7 @@ VARIABLES pc, noteCommitmentRoot, nullifierRoot, tip_block, txPool,
 vars == << pc, noteCommitmentRoot, nullifierRoot, tip_block, txPool, 
            proposed_block, tx_, actions, nullifier, commitment >>
 
-ProcSet == {"Producer"} \cup {"User"} \cup {"Node"}
+ProcSet == {"User"} \cup {"Producer"} \cup {"Node"}
 
 Init == (* Global variables *)
         /\ noteCommitmentRoot = <<>>
@@ -105,9 +105,27 @@ Init == (* Global variables *)
         /\ actions = defaultInitValue
         /\ nullifier = defaultInitValue
         /\ commitment = defaultInitValue
-        /\ pc = [self \in ProcSet |-> CASE self = "Producer" -> "Produce"
-                                        [] self = "User" -> "CreateTx"
+        /\ pc = [self \in ProcSet |-> CASE self = "User" -> "CreateTx"
+                                        [] self = "Producer" -> "Produce"
                                         [] self = "Node" -> "Verify"]
+
+CreateTx == /\ pc["User"] = "CreateTx"
+            /\ txPool = {}
+            /\ actions' = {[
+                              nullifier   |-> RandomBytes(32),
+                              commitment  |-> RandomBytes(32),
+                              value       |-> 10,
+                              receiver    |-> "receiver"
+                          ]}
+            /\ txPool' = {[
+                             actions |-> actions',
+                             proof   |-> GenerateZKProof(actions')
+                         ]}
+            /\ pc' = [pc EXCEPT !["User"] = "Done"]
+            /\ UNCHANGED << noteCommitmentRoot, nullifierRoot, tip_block, 
+                            proposed_block, tx_, nullifier, commitment >>
+
+User == CreateTx
 
 Produce == /\ pc["Producer"] = "Produce"
            /\ Cardinality(txPool) > 0
@@ -121,22 +139,6 @@ Produce == /\ pc["Producer"] = "Produce"
                            actions, nullifier, commitment >>
 
 Producer == Produce
-
-CreateTx == /\ pc["User"] = "CreateTx"
-            /\ txPool = {}
-            /\ actions' = {[
-                              nullifier   |-> RandomBytes(32),
-                              commitment  |-> RandomBytes(32),
-                              value       |-> 10,
-                              receiver    |-> "receiver"
-                          ]}
-            /\ tx_' = OrchardTransaction(actions', GenerateZKProof(actions', noteCommitmentRoot))
-            /\ txPool' = {tx_'}
-            /\ pc' = [pc EXCEPT !["User"] = "Done"]
-            /\ UNCHANGED << noteCommitmentRoot, nullifierRoot, tip_block, 
-                            proposed_block, nullifier, commitment >>
-
-User == CreateTx
 
 Verify == /\ pc["Node"] = "Verify"
           /\ proposed_block # defaultInitValue
@@ -161,12 +163,12 @@ Node == Verify
 Terminating == /\ \A self \in ProcSet: pc[self] = "Done"
                /\ UNCHANGED vars
 
-Next == Producer \/ User \/ Node
+Next == User \/ Producer \/ Node
            \/ Terminating
 
 Spec == /\ Init /\ [][Next]_vars
-        /\ WF_vars(Producer)
         /\ WF_vars(User)
+        /\ WF_vars(Producer)
         /\ WF_vars(Node)
 
 Termination == <>(\A self \in ProcSet: pc[self] = "Done")
