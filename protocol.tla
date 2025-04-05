@@ -54,8 +54,8 @@ begin
         \* Create a new block with an incremented height and the transactions from the pool.
         proposed_block :=
         [
-            height                  |-> tip_block.height + 1,
-            txs                     |-> txPool
+            height  |-> tip_block.height + 1,
+            txs     |-> txPool
         ];
         \* Clear the transaction pool after block creation.
         txPool := {};
@@ -72,11 +72,17 @@ begin
         if VerifyBlockHeader(proposed_block, tip_block) then
             \* Verify the block's transactions.
             if VerifyBlockTransactions(proposed_block.txs) then
-                  \* Update the compact state (Merkle roots) accordingly.
-                  noteCommitmentRoot := ComputeNewNoteRoot(noteCommitmentRoot, proposed_block.txs);
-                  nullifierRoot := ComputeNewNullifierRoot(nullifierRoot, proposed_block.txs);
-                  \* Update the blockchain's tip block.
-                  tip_block := [height |-> proposed_block.height, transactions |-> proposed_block.txs];
+                \* For each transaction in the proposed block.
+                with tx \in proposed_block.txs do
+                    \* Verify the transaction zk-SNARK proof.
+                    if VerifyZKProof(tx.proof, noteCommitmentRoot, nullifierRoot) then
+                        \* Update the note commitment and nullifier roots.
+                        noteCommitmentRoot := ComputeNewNoteRoot(noteCommitmentRoot, tx);
+                        nullifierRoot := ComputeNewNullifierRoot(nullifierRoot, tx);
+                    end if;
+                end with;
+                \* Update the blockchain's tip block.
+                tip_block := [height |-> proposed_block.height, transactions |-> proposed_block.txs];
             end if;
         end if;
         \* Regardless of validity, discard the proposed block after verification.
@@ -84,7 +90,7 @@ begin
 end process;
 
 end algorithm; *)
-\* BEGIN TRANSLATION (chksum(pcal) = "f6539c5" /\ chksum(tla) = "e3a705b7")
+\* BEGIN TRANSLATION (chksum(pcal) = "c7f08613" /\ chksum(tla) = "51763d45")
 CONSTANT defaultInitValue
 VARIABLES pc, noteCommitmentRoot, nullifierRoot, tip_block, txPool, 
           proposed_block, tx_, actions, nullifier, commitment
@@ -130,8 +136,8 @@ User == CreateTx
 Produce == /\ pc["Producer"] = "Produce"
            /\ Cardinality(txPool) > 0
            /\ proposed_block' = [
-                                    height                  |-> tip_block.height + 1,
-                                    txs                     |-> txPool
+                                    height  |-> tip_block.height + 1,
+                                    txs     |-> txPool
                                 ]
            /\ txPool' = {}
            /\ pc' = [pc EXCEPT !["Producer"] = "Done"]
@@ -144,8 +150,13 @@ Verify == /\ pc["Node"] = "Verify"
           /\ proposed_block # defaultInitValue
           /\ IF VerifyBlockHeader(proposed_block, tip_block)
                 THEN /\ IF VerifyBlockTransactions(proposed_block.txs)
-                           THEN /\ noteCommitmentRoot' = ComputeNewNoteRoot(noteCommitmentRoot, proposed_block.txs)
-                                /\ nullifierRoot' = ComputeNewNullifierRoot(nullifierRoot, proposed_block.txs)
+                           THEN /\ \E tx \in proposed_block.txs:
+                                     IF VerifyZKProof(tx.proof, noteCommitmentRoot, nullifierRoot)
+                                        THEN /\ noteCommitmentRoot' = ComputeNewNoteRoot(noteCommitmentRoot, tx)
+                                             /\ nullifierRoot' = ComputeNewNullifierRoot(nullifierRoot, tx)
+                                        ELSE /\ TRUE
+                                             /\ UNCHANGED << noteCommitmentRoot, 
+                                                             nullifierRoot >>
                                 /\ tip_block' = [height |-> proposed_block.height, transactions |-> proposed_block.txs]
                            ELSE /\ TRUE
                                 /\ UNCHANGED << noteCommitmentRoot, 

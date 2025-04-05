@@ -10,6 +10,9 @@ VerifyBlockHeader(proposed_block, tip_block) == TRUE
 \* Verify a given set of transactions.
 VerifyBlockTransactions(transactions) == TRUE
 
+\* Verify a zk-SNARK proof for a given transaction.
+VerifyZKProof(proof, noteCommitmentRoot, nullifierRoot) == TRUE
+
 \* Generate a sequence of random bytes of length n.
 RandomBytes(n) == [ i \in 1..n |-> CHOOSE x \in 0..255 : TRUE ]
 
@@ -21,9 +24,6 @@ ComputeNewNoteRoot(oldProof, txs) == RandomBytes(32)
 
 \* Abstract function that computes a new nullifier root given the current state and a set of transactions.
 ComputeNewNullifierRoot(oldProof, txs) == RandomBytes(32)
-
-\* Verify a zk-SNARK proof.
-VerifyZKProof(proof, noteCommitmentProof, nullifierProof) == TRUE
 
 \* Create a transaction for a given set of actions.
 OrchardTransaction(actions, proof) == [
