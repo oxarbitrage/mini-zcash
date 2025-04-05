@@ -14,7 +14,20 @@ variables
     txPool = {};
     \* The proposed block from a miner.
     proposed_block;
+
 define
+    \* The height of the blockchain always increases
+    HeightAlwaysIncreases == [][tip_block'.height > tip_block.height]_tip_block
+
+    \* Transactions in the transaction pool are eventually processed
+    TransactionsEventuallyProcessed ==
+        (Cardinality(txPool) > 0) => <> (Cardinality(txPool) = 0)
+
+    \* For each transaction in the transaction pool, the nullifier is unique
+    NoDoubleSpending ==
+        \A tx \in txPool :
+            \A action1, action2 \in tx.actions :
+                action1 /= action2 => action1.nullifier /= action2.nullifier
 end define;
 
 \* User process: User creates actions and a proof, use that to build a transaction and add it to the pool.
@@ -90,10 +103,25 @@ begin
 end process;
 
 end algorithm; *)
-\* BEGIN TRANSLATION (chksum(pcal) = "c7f08613" /\ chksum(tla) = "51763d45")
+\* BEGIN TRANSLATION (chksum(pcal) = "2683878f" /\ chksum(tla) = "8cb51690")
 CONSTANT defaultInitValue
 VARIABLES pc, noteCommitmentRoot, nullifierRoot, tip_block, txPool, 
-          proposed_block, tx_, actions, nullifier, commitment
+          proposed_block
+
+(* define statement *)
+HeightAlwaysIncreases == [][tip_block'.height > tip_block.height]_tip_block
+
+
+TransactionsEventuallyProcessed ==
+    (Cardinality(txPool) > 0) => <> (Cardinality(txPool) = 0)
+
+
+NoDoubleSpending ==
+    \A tx \in txPool :
+        \A action1, action2 \in tx.actions :
+            action1 /= action2 => action1.nullifier /= action2.nullifier
+
+VARIABLES tx_, actions, nullifier, commitment
 
 vars == << pc, noteCommitmentRoot, nullifierRoot, tip_block, txPool, 
            proposed_block, tx_, actions, nullifier, commitment >>
