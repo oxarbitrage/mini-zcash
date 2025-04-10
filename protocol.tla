@@ -80,30 +80,27 @@ begin
     Verify:
         \* Wait for a proposed block.
         await proposed_block # defaultInitValue;
-    
-        \* Verify the block's header.
-        if VerifyBlockHeader(proposed_block, tip_block) then
-            \* Verify the block's transactions.
-            if VerifyBlockTransactions(proposed_block.txs) then
-                \* For each transaction in the proposed block.
-                with tx \in proposed_block.txs do
-                    \* Verify the transaction zk-SNARK proof.
-                    if VerifyZKProof(tx.proof, noteCommitmentRoot, nullifierRoot) then
-                        \* Update the note commitment and nullifier roots.
-                        noteCommitmentRoot := ComputeNewNoteRoot(noteCommitmentRoot, tx);
-                        nullifierRoot := ComputeNewNullifierRoot(nullifierRoot, tx);
-                    end if;
-                end with;
-                \* Update the blockchain's tip block.
-                tip_block := [height |-> proposed_block.height, transactions |-> proposed_block.txs];
-            end if;
-        end if;
+        
+        \* Panics if the proposed block is invalid.
+        assert VerifyBlockHeader(proposed_block, tip_block) = TRUE;
+        assert VerifyBlockTransactions(proposed_block.txs) = TRUE;
+
+        \* For each transaction in the proposed block.
+        with tx \in proposed_block.txs do
+            \* Verify the transaction zk-SNARK proof, panick if invalid.
+            assert VerifyZKProof(tx.proof, noteCommitmentRoot, nullifierRoot) = TRUE;
+            \* Update the note commitment and nullifier roots.
+            noteCommitmentRoot := ComputeNewNoteRoot(noteCommitmentRoot, tx);
+            nullifierRoot := ComputeNewNullifierRoot(nullifierRoot, tx);
+        end with;
+        \* Update the blockchain's tip block.
+        tip_block := [height |-> proposed_block.height, transactions |-> proposed_block.txs];
         \* Regardless of validity, discard the proposed block after verification.
         proposed_block := defaultInitValue;
 end process;
 
 end algorithm; *)
-\* BEGIN TRANSLATION (chksum(pcal) = "2683878f" /\ chksum(tla) = "8cb51690")
+\* BEGIN TRANSLATION (chksum(pcal) = "29f1a93a" /\ chksum(tla) = "5b0dd1a1")
 CONSTANT defaultInitValue
 VARIABLES pc, noteCommitmentRoot, nullifierRoot, tip_block, txPool, 
           proposed_block
@@ -176,22 +173,16 @@ Producer == Produce
 
 Verify == /\ pc["Node"] = "Verify"
           /\ proposed_block # defaultInitValue
-          /\ IF VerifyBlockHeader(proposed_block, tip_block)
-                THEN /\ IF VerifyBlockTransactions(proposed_block.txs)
-                           THEN /\ \E tx \in proposed_block.txs:
-                                     IF VerifyZKProof(tx.proof, noteCommitmentRoot, nullifierRoot)
-                                        THEN /\ noteCommitmentRoot' = ComputeNewNoteRoot(noteCommitmentRoot, tx)
-                                             /\ nullifierRoot' = ComputeNewNullifierRoot(nullifierRoot, tx)
-                                        ELSE /\ TRUE
-                                             /\ UNCHANGED << noteCommitmentRoot, 
-                                                             nullifierRoot >>
-                                /\ tip_block' = [height |-> proposed_block.height, transactions |-> proposed_block.txs]
-                           ELSE /\ TRUE
-                                /\ UNCHANGED << noteCommitmentRoot, 
-                                                nullifierRoot, tip_block >>
-                ELSE /\ TRUE
-                     /\ UNCHANGED << noteCommitmentRoot, nullifierRoot, 
-                                     tip_block >>
+          /\ Assert(VerifyBlockHeader(proposed_block, tip_block) = TRUE, 
+                    "Failure of assertion at line 85, column 9.")
+          /\ Assert(VerifyBlockTransactions(proposed_block.txs) = TRUE, 
+                    "Failure of assertion at line 86, column 9.")
+          /\ \E tx \in proposed_block.txs:
+               /\ Assert(VerifyZKProof(tx.proof, noteCommitmentRoot, nullifierRoot) = TRUE, 
+                         "Failure of assertion at line 91, column 13.")
+               /\ noteCommitmentRoot' = ComputeNewNoteRoot(noteCommitmentRoot, tx)
+               /\ nullifierRoot' = ComputeNewNullifierRoot(nullifierRoot, tx)
+          /\ tip_block' = [height |-> proposed_block.height, transactions |-> proposed_block.txs]
           /\ proposed_block' = defaultInitValue
           /\ pc' = [pc EXCEPT !["Node"] = "Done"]
           /\ UNCHANGED << txPool, tx_, actions, nullifier, commitment >>
